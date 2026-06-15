@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { AppProvider, useApp, type Screen } from "@/components/app-context"
 import { AppSidebar } from "@/components/app-sidebar"
+import { FirebaseConnectionTest } from "@/components/firebase-connection-test"
 import { LearnerSwitcher } from "@/components/learner-switcher"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { DashboardScreen } from "@/components/screens/dashboard-screen"
@@ -67,6 +68,7 @@ function Shell() {
               </p>
             </div>
             <div className="hidden items-center gap-2 md:flex">
+              <FirebaseConnectionTest />
               <LearnerSwitcher />
               <ThemeToggle />
               <Button onClick={() => setScreen("new-session")}>
@@ -80,6 +82,7 @@ function Shell() {
           </div>
           {/* Mobile controls */}
           <div className="flex items-center gap-2 md:hidden">
+            <FirebaseConnectionTest />
             <LearnerSwitcher />
             <Button
               size="sm"
