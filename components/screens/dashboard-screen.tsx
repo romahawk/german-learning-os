@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import {
   Calendar,
   Clock,
@@ -22,17 +23,24 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { useApp } from "@/components/app-context"
-import { StatusBadge } from "@/components/status-badge"
 import {
-  dueToday,
-  filterByLearner,
   learners,
-  learnerName,
-  mistakes,
-  sessions,
   sessionModes,
-  vocabulary,
 } from "@/lib/data"
+import {
+  getDueMistakes,
+  getDueVocabulary,
+  getMistakesByLearner,
+  getRecentSessions,
+  getVocabularyByLearner,
+} from "@/lib/firestore"
+import {
+  firestoreLearnersForFilter,
+  formatTimestamp,
+  LEARNING_DATA_CHANGED_EVENT,
+  learnerInitial,
+} from "@/lib/learning-firestore-ui"
+import type { Mistake, Session, Vocabulary } from "@/lib/types"
 
 function StatCard({
   icon: Icon,
@@ -63,33 +71,83 @@ function StatCard({
 
 export function DashboardScreen() {
   const { learner, setScreen } = useApp()
+  const [recentSessions, setRecentSessions] = React.useState<Session[]>([])
+  const [mistakes, setMistakes] = React.useState<Mistake[]>([])
+  const [vocabulary, setVocabulary] = React.useState<Vocabulary[]>([])
+  const [dueReviews, setDueReviews] = React.useState(0)
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState<string | null>(null)
 
-  const learnerSessions = filterByLearner(sessions, learner)
-  const sessionsThisWeek = learnerSessions.length
-  const dueReviews =
-    dueToday(filterByLearner(mistakes, learner)).length +
-    dueToday(filterByLearner(vocabulary, learner)).length
-  const recurringMistakes = filterByLearner(mistakes, learner).filter(
-    (m) => m.occurrences >= 3 && m.status !== "resolved",
+  const loadDashboard = React.useCallback(async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      console.info("[Firestore] Loading sessions...")
+      console.info("[Firestore] Loading mistakes...")
+      console.info("[Firestore] Loading vocabulary...")
+
+      const selectedLearners = firestoreLearnersForFilter(learner)
+      const [
+        sessions,
+        mistakeGroups,
+        vocabularyGroups,
+        dueMistakeGroups,
+        dueVocabularyGroups,
+      ] = await Promise.all([
+        getRecentSessions(20),
+        Promise.all(selectedLearners.map(getMistakesByLearner)),
+        Promise.all(selectedLearners.map(getVocabularyByLearner)),
+        Promise.all(selectedLearners.map(getDueMistakes)),
+        Promise.all(selectedLearners.map(getDueVocabulary)),
+      ])
+
+      const visibleSessions =
+        learner === "both"
+          ? sessions
+          : sessions.filter((session) =>
+              selectedLearners.includes(session.learner)
+            )
+
+      setRecentSessions(visibleSessions.slice(0, 4))
+      setMistakes(mistakeGroups.flat())
+      setVocabulary(vocabularyGroups.flat())
+      setDueReviews(
+        dueMistakeGroups.flat().length + dueVocabularyGroups.flat().length
+      )
+    } catch (error) {
+      console.error("[Firestore] Dashboard load failed", error)
+      setError("Could not load dashboard data from Firestore.")
+    } finally {
+      setLoading(false)
+    }
+  }, [learner])
+
+  React.useEffect(() => {
+    void loadDashboard()
+
+    window.addEventListener(LEARNING_DATA_CHANGED_EVENT, loadDashboard)
+    return () =>
+      window.removeEventListener(LEARNING_DATA_CHANGED_EVENT, loadDashboard)
+  }, [loadDashboard])
+
+  const sessionsThisWeek = recentSessions.length
+  const recurringMistakes = mistakes.filter(
+    (m) => m.frequency >= 3 && m.status !== "resolved"
   ).length
-  const vocabLearned = filterByLearner(vocabulary, learner).filter(
-    (v) => v.status === "review" || v.status === "resolved",
-  ).length
+  const vocabLearned = vocabulary.filter((v) => v.status === "known").length
 
   const visibleLearners =
     learner === "both" ? learners : learners.filter((l) => l.id === learner)
 
-  const recentSessions = learnerSessions.slice(0, 4)
-
   return (
     <div className="flex flex-col gap-6">
-      {/* Learner snapshot */}
       <div className="grid gap-4 sm:grid-cols-2">
         {visibleLearners.map((l) => (
           <Card key={l.id} className="bg-gradient-to-br from-card to-accent/30">
             <CardContent className="flex items-center gap-4 py-5">
               <Avatar className="size-12 border">
-                <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                <AvatarFallback className="bg-primary/10 font-semibold text-primary">
                   {l.name[0]}
                 </AvatarFallback>
               </Avatar>
@@ -109,35 +167,35 @@ export function DashboardScreen() {
         ))}
       </div>
 
-      {/* Stats */}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           icon={Calendar}
-          label="Sessions this week"
-          value={sessionsThisWeek}
-          hint="Across all modes"
+          label="Recent sessions"
+          value={loading ? "..." : sessionsThisWeek}
+          hint="Latest saved Firestore sessions"
         />
         <StatCard
           icon={Clock}
           label="Due reviews"
-          value={dueReviews}
-          hint="Mistakes + vocabulary due today"
+          value={loading ? "..." : dueReviews}
+          hint="Mistakes + vocabulary due"
         />
         <StatCard
           icon={AlertCircle}
           label="Recurring mistakes"
-          value={recurringMistakes}
+          value={loading ? "..." : recurringMistakes}
           hint="Seen 3+ times, not resolved"
         />
         <StatCard
           icon={BookOpen}
-          label="Vocabulary learned"
-          value={vocabLearned}
-          hint="In review or mastered"
+          label="Vocabulary known"
+          value={loading ? "..." : vocabLearned}
+          hint="Marked known in Firestore"
         />
       </div>
 
-      {/* Quick actions */}
       <Card>
         <CardHeader>
           <CardTitle>Quick actions</CardTitle>
@@ -152,7 +210,7 @@ export function DashboardScreen() {
             <Mic className="size-5" />
             <span className="flex flex-col items-start">
               <span className="font-semibold">Start voice session</span>
-              <span className="text-xs font-normal opacity-80">Speak & transcribe</span>
+              <span className="text-xs font-normal opacity-80">Speak and transcribe</span>
             </span>
           </Button>
           <Button
@@ -176,18 +234,19 @@ export function DashboardScreen() {
             <RotateCcw className="size-5" />
             <span className="flex flex-col items-start">
               <span className="font-semibold">Review today</span>
-              <span className="text-xs font-normal opacity-80">{dueReviews} items due</span>
+              <span className="text-xs font-normal opacity-80">
+                {loading ? "Loading" : `${dueReviews} items due`}
+              </span>
             </span>
           </Button>
         </CardContent>
       </Card>
 
-      {/* Recent sessions */}
       <Card>
         <CardHeader className="flex-row items-center justify-between">
           <div className="flex flex-col gap-1.5">
             <CardTitle>Recent sessions</CardTitle>
-            <CardDescription>Latest practice across the family.</CardDescription>
+            <CardDescription>Latest saved practice from Firestore.</CardDescription>
           </div>
           <Button variant="ghost" size="sm" onClick={() => setScreen("new-session")}>
             New
@@ -195,35 +254,44 @@ export function DashboardScreen() {
           </Button>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          {recentSessions.map((s) => {
-            const mode = sessionModes.find((m) => m.value === s.mode)
-            return (
-              <div
-                key={s.id}
-                className="flex items-start gap-3 rounded-lg border p-3"
-              >
-                <Avatar className="size-9 border">
-                  <AvatarFallback className="bg-secondary text-xs font-semibold">
-                    {learnerName(s.learner)[0]}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium">{learnerName(s.learner)}</span>
-                    <Badge variant="outline">{mode?.label}</Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {s.duration} min · {s.date}
-                    </span>
+          {loading && (
+            <p className="text-sm text-muted-foreground">Loading sessions...</p>
+          )}
+
+          {!loading && recentSessions.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              Saved sessions will appear here.
+            </p>
+          )}
+
+          {!loading &&
+            recentSessions.map((s) => {
+              const mode = sessionModes.find((m) => m.value === s.mode)
+              return (
+                <div
+                  key={s.id}
+                  className="flex items-start gap-3 rounded-lg border p-3"
+                >
+                  <Avatar className="size-9 border">
+                    <AvatarFallback className="bg-secondary text-xs font-semibold">
+                      {learnerInitial(s.learner)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium">{s.learner}</span>
+                      <Badge variant="outline">{mode?.label ?? s.mode}</Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {s.duration} min - {formatTimestamp(s.createdAt)}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {s.summary}
+                    </p>
                   </div>
-                  <p className="mt-1 text-sm text-muted-foreground">{s.summary}</p>
                 </div>
-                <div className="hidden shrink-0 flex-col items-end gap-1 text-xs text-muted-foreground sm:flex">
-                  <span>{s.mistakesFound} fixes</span>
-                  <span>+{s.vocabAdded} words</span>
-                </div>
-              </div>
-            )
-          })}
+              )
+            })}
         </CardContent>
       </Card>
     </div>

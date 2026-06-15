@@ -8,7 +8,7 @@ import {
   BookOpen,
   Target,
   Loader2,
-  Check,
+  Save,
 } from "lucide-react"
 import {
   Card,
@@ -31,37 +31,59 @@ import {
   FieldLabel,
   FieldDescription,
 } from "@/components/ui/field"
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty"
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+} from "@/components/ui/empty"
 import { toast } from "sonner"
 import { useApp } from "@/components/app-context"
 import {
   learners,
+  learnerName,
   sessionModes,
   type LearnerId,
   type SessionMode,
 } from "@/lib/data"
+import {
+  saveGaps,
+  saveMistakes,
+  saveSession,
+  saveVocabularyItems,
+} from "@/lib/firestore"
+import {
+  announceLearningDataChanged,
+  toFirestoreLearner,
+} from "@/lib/learning-firestore-ui"
+import type { MistakeCategory } from "@/lib/types"
 
 type Analysis = {
   summary: string
-  mistakes: { original: string; correction: string; category: string }[]
-  vocab: { word: string; meaning: string }[]
-  gaps: string[]
-}
-
-const SAMPLE_ANALYSIS: Analysis = {
-  summary:
-    "Confident speaking with good range. Main issues were genitive prepositions and verb placement in subordinate clauses. Vocabulary around the workplace is growing well.",
-  mistakes: [
-    { original: "Wegen dem Stau", correction: "Wegen des Staus", category: "Genitive case" },
-    { original: "...weil ich habe keine Zeit", correction: "...weil ich keine Zeit habe", category: "Word order" },
-    { original: "Ich freue mich für das Treffen", correction: "Ich freue mich auf das Treffen", category: "Preposition" },
-  ],
-  vocab: [
-    { word: "die Besprechung", meaning: "meeting" },
-    { word: "fristgerecht", meaning: "on time / within deadline" },
-    { word: "die Tagesordnung", meaning: "agenda" },
-  ],
-  gaps: ["Genitive prepositions (wegen, trotz)", "Verb-final order after 'weil'"],
+  nextFocus: string
+  mistakes: {
+    original: string
+    correction: string
+    category: string
+    rule: string
+    status: "new" | "recurring" | "resolved"
+    frequency: number
+  }[]
+  vocabulary: {
+    word: string
+    pos: "noun" | "verb" | "adj" | "adv" | "phrase" | "idiom"
+    meaning: string
+    exampleSentence: string
+    usageTip: string
+    status: "new" | "drilling" | "known"
+    frequency: number
+  }[]
+  gaps: {
+    pattern: string
+    frequency: number
+    suggestedDrill: string
+  }[]
 }
 
 export function NewSessionScreen() {
@@ -69,36 +91,185 @@ export function NewSessionScreen() {
   const defaultLearner: LearnerId =
     learner === "both" ? "roman" : (learner as LearnerId)
 
-  const [selectedLearner, setSelectedLearner] = React.useState<LearnerId>(defaultLearner)
+  const [selectedLearner, setSelectedLearner] =
+    React.useState<LearnerId>(defaultLearner)
   const [mode, setMode] = React.useState<SessionMode>("conversation")
   const [duration, setDuration] = React.useState("20")
   const [notes, setNotes] = React.useState("")
   const [analyzing, setAnalyzing] = React.useState(false)
+  const [saving, setSaving] = React.useState(false)
   const [result, setResult] = React.useState<Analysis | null>(null)
+  const [error, setError] = React.useState<string | null>(null)
+  const [saveError, setSaveError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     setSelectedLearner(defaultLearner)
   }, [defaultLearner])
 
-  function analyze() {
+  async function analyze() {
     if (!notes.trim()) {
       toast.error("Add some notes or a transcript first.")
       return
     }
+
+    const parsedDuration = Number(duration)
+
+    if (!Number.isFinite(parsedDuration) || parsedDuration <= 0) {
+      toast.error("Choose a valid duration.")
+      return
+    }
+
     setAnalyzing(true)
     setResult(null)
-    setTimeout(() => {
-      setAnalyzing(false)
-      setResult(SAMPLE_ANALYSIS)
-      toast.success("Session analyzed", {
-        description: `${SAMPLE_ANALYSIS.mistakes.length} fixes and ${SAMPLE_ANALYSIS.vocab.length} new words found.`,
+    setError(null)
+    setSaveError(null)
+
+    try {
+      const response = await fetch("/api/analyze-session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          learner: learnerName(selectedLearner),
+          mode,
+          duration: parsedDuration,
+          notes,
+        }),
       })
-    }, 1600)
+
+      const data = (await response.json()) as Analysis | { error?: string }
+
+      if (!response.ok) {
+        throw new Error(
+          "error" in data && data.error
+            ? data.error
+            : "Failed to analyze session."
+        )
+      }
+
+      const analysis = data as Analysis
+      setResult(analysis)
+      toast.success("Session analyzed", {
+        description: `${analysis.mistakes.length} fixes and ${analysis.vocabulary.length} vocabulary items found.`,
+      })
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to analyze session."
+      setError(message)
+      toast.error("Analysis failed", {
+        description: message,
+      })
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  async function saveLearningSession() {
+    if (!result || saving) {
+      return
+    }
+
+    const parsedDuration = Number(duration)
+
+    if (!Number.isFinite(parsedDuration) || parsedDuration <= 0) {
+      toast.error("Choose a valid duration before saving.")
+      return
+    }
+
+    const firestoreLearner = toFirestoreLearner(selectedLearner)
+
+    setSaving(true)
+    setSaveError(null)
+
+    try {
+      let sessionId: string
+
+      try {
+        sessionId = await saveSession({
+          learner: firestoreLearner,
+          mode,
+          duration: parsedDuration,
+          notes,
+          summary: result.summary,
+          nextFocus: result.nextFocus,
+        })
+      } catch (err) {
+        throw new Error("Could not save the session summary. Please try again.")
+      }
+
+      try {
+        await saveMistakes(
+          result.mistakes.map((mistake) => ({
+            sessionId,
+            learner: firestoreLearner,
+            original: mistake.original,
+            correction: mistake.correction,
+            category: mistake.category as MistakeCategory,
+            rule: mistake.rule,
+            status: "new",
+            frequency: 1,
+            nextReview: null,
+          }))
+        )
+      } catch {
+        throw new Error("Session saved, but mistakes could not be saved.")
+      }
+
+      try {
+        await saveVocabularyItems(
+          result.vocabulary.map((item) => ({
+            sessionId,
+            learner: firestoreLearner,
+            word: item.word,
+            pos: item.pos,
+            meaning: item.meaning,
+            exampleSentence: item.exampleSentence,
+            usageTip: item.usageTip,
+            status: "new",
+            frequency: 1,
+            nextReview: null,
+          }))
+        )
+      } catch {
+        throw new Error("Session saved, but vocabulary could not be saved.")
+      }
+
+      try {
+        await saveGaps(
+          result.gaps.map((gap) => ({
+            sessionId,
+            learner: firestoreLearner,
+            pattern: gap.pattern,
+            frequency: gap.frequency,
+            suggestedDrill: gap.suggestedDrill,
+          }))
+        )
+      } catch {
+        throw new Error("Session saved, but gaps could not be saved.")
+      }
+
+      announceLearningDataChanged()
+      setNotes("")
+      setResult(null)
+      setError(null)
+      toast.success("Session saved successfully")
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Could not save this learning session."
+      setSaveError(message)
+      toast.error("Save failed", {
+        description: message,
+      })
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-      {/* Form */}
       <Card>
         <CardHeader>
           <CardTitle>New session</CardTitle>
@@ -113,7 +284,9 @@ export function NewSessionScreen() {
               <FieldLabel>Learner</FieldLabel>
               <ToggleGroup
                 value={[selectedLearner]}
-                onValueChange={(v) => v[0] && setSelectedLearner(v[0] as LearnerId)}
+                onValueChange={(v) =>
+                  v[0] && setSelectedLearner(v[0] as LearnerId)
+                }
                 variant="outline"
                 className="justify-start"
               >
@@ -166,7 +339,7 @@ export function NewSessionScreen() {
                 id="notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Paste a transcript or jot down what was practiced, sentences spoken, and anything that felt hard…"
+                placeholder="Paste a transcript or jot down what was practiced, sentences spoken, and anything that felt hard..."
                 className="min-h-44 resize-y"
               />
               <FieldDescription>
@@ -175,41 +348,68 @@ export function NewSessionScreen() {
             </Field>
 
             <div className="flex flex-wrap gap-3">
-              <Button onClick={analyze} disabled={analyzing}>
+              <Button onClick={analyze} disabled={analyzing || saving}>
                 {analyzing ? (
                   <Loader2 data-icon="inline-start" className="animate-spin" />
                 ) : (
                   <Sparkles data-icon="inline-start" />
                 )}
-                {analyzing ? "Analyzing…" : "Analyze session"}
+                {analyzing ? "Analyzing..." : "Analyze session"}
               </Button>
               <Button variant="outline" type="button">
                 <Mic data-icon="inline-start" />
                 Record voice
               </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={saveLearningSession}
+                disabled={!result || analyzing || saving}
+              >
+                {saving ? (
+                  <Loader2 data-icon="inline-start" className="animate-spin" />
+                ) : (
+                  <Save data-icon="inline-start" />
+                )}
+                {saving ? "Saving..." : "Save Learning Session"}
+              </Button>
             </div>
+            {saveError && (
+              <p className="text-sm text-destructive">{saveError}</p>
+            )}
           </FieldGroup>
         </CardContent>
       </Card>
 
-      {/* Preview panel */}
-      <Card className="lg:sticky lg:top-6 h-fit">
+      <Card className="h-fit lg:sticky lg:top-6">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Sparkles className="size-4 text-primary" />
             AI result
           </CardTitle>
-          <CardDescription>Extracted insights from the session.</CardDescription>
+          <CardDescription>
+            Preview only. Nothing is saved automatically.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {analyzing && (
             <div className="flex flex-col items-center gap-3 py-10 text-center text-muted-foreground">
               <Loader2 className="size-6 animate-spin text-primary" />
-              <p className="text-sm">Listening for mistakes & vocabulary…</p>
+              <p className="text-sm">Reading for mistakes and vocabulary...</p>
             </div>
           )}
 
-          {!analyzing && !result && (
+          {!analyzing && error && (
+            <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm">
+              <div className="flex items-center gap-2 font-medium text-destructive">
+                <AlertCircle className="size-4" />
+                Analysis failed
+              </div>
+              <p className="text-muted-foreground">{error}</p>
+            </div>
+          )}
+
+          {!analyzing && !error && !result && (
             <Empty className="py-8">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
@@ -225,10 +425,13 @@ export function NewSessionScreen() {
 
           {!analyzing && result && (
             <div className="flex flex-col gap-5">
-              <div>
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  {result.summary}
-                </p>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                {result.summary}
+              </p>
+
+              <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+                <p className="mb-1 font-medium">Next focus</p>
+                <p className="text-muted-foreground">{result.nextFocus}</p>
               </div>
 
               <Separator />
@@ -240,57 +443,95 @@ export function NewSessionScreen() {
                 </h4>
                 {result.mistakes.map((m, i) => (
                   <div key={i} className="rounded-lg border p-3 text-sm">
-                    <p className="text-muted-foreground line-through">{m.original}</p>
+                    <p className="text-muted-foreground line-through">
+                      {m.original}
+                    </p>
                     <p className="font-medium text-chart-2">{m.correction}</p>
-                    <Badge variant="outline" className="mt-1.5">
-                      {m.category}
-                    </Badge>
+                    <p className="mt-2 text-muted-foreground">{m.rule}</p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <Badge variant="outline">{m.category}</Badge>
+                      <Badge variant="secondary">{m.status}</Badge>
+                      <Badge variant="secondary">x{m.frequency}</Badge>
+                    </div>
                   </div>
                 ))}
+                {result.mistakes.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    No specific mistakes found in these notes.
+                  </p>
+                )}
               </div>
 
               <div className="flex flex-col gap-2">
                 <h4 className="flex items-center gap-2 text-sm font-semibold">
                   <BookOpen className="size-4 text-primary" />
-                  Vocabulary ({result.vocab.length})
+                  Vocabulary ({result.vocabulary.length})
                 </h4>
                 <div className="flex flex-col gap-1.5">
-                  {result.vocab.map((v, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
-                    >
-                      <span className="font-medium">{v.word}</span>
-                      <span className="text-muted-foreground">{v.meaning}</span>
+                  {result.vocabulary.map((v, i) => (
+                    <div key={i} className="rounded-md border px-3 py-2 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-medium">{v.word}</span>
+                        <span className="text-muted-foreground">
+                          {v.meaning}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-muted-foreground">
+                        {v.exampleSentence}
+                      </p>
+                      <p className="mt-1 text-muted-foreground">{v.usageTip}</p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <Badge variant="outline">{v.pos}</Badge>
+                        <Badge variant="secondary">{v.status}</Badge>
+                        <Badge variant="secondary">x{v.frequency}</Badge>
+                      </div>
                     </div>
                   ))}
+                  {result.vocabulary.length === 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      No new vocabulary found in these notes.
+                    </p>
+                  )}
                 </div>
               </div>
 
               <div className="flex flex-col gap-2">
                 <h4 className="flex items-center gap-2 text-sm font-semibold">
                   <Target className="size-4 text-chart-3" />
-                  Gaps
+                  Gaps ({result.gaps.length})
                 </h4>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-col gap-2">
                   {result.gaps.map((g, i) => (
-                    <Badge key={i} variant="secondary">
-                      {g}
-                    </Badge>
+                    <div key={i} className="rounded-md border px-3 py-2 text-sm">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">{g.pattern}</span>
+                        <Badge variant="secondary">x{g.frequency}</Badge>
+                      </div>
+                      <p className="mt-1 text-muted-foreground">
+                        {g.suggestedDrill}
+                      </p>
+                    </div>
                   ))}
+                  {result.gaps.length === 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      No recurring gaps found in these notes.
+                    </p>
+                  )}
                 </div>
               </div>
 
               <Button
+                type="button"
+                onClick={saveLearningSession}
+                disabled={saving}
                 className="w-full"
-                onClick={() =>
-                  toast.success("Saved to library", {
-                    description: "Mistakes and vocabulary scheduled for review.",
-                  })
-                }
               >
-                <Check data-icon="inline-start" />
-                Save to library
+                {saving ? (
+                  <Loader2 data-icon="inline-start" className="animate-spin" />
+                ) : (
+                  <Save data-icon="inline-start" />
+                )}
+                {saving ? "Saving..." : "Save Learning Session"}
               </Button>
             </div>
           )}

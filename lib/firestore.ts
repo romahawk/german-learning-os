@@ -9,7 +9,9 @@ import {
   Timestamp,
   where,
   type DocumentData,
+  type Query,
   type QueryDocumentSnapshot,
+  type QuerySnapshot,
 } from "firebase/firestore"
 
 import { db } from "@/lib/firebase"
@@ -31,6 +33,35 @@ const COLLECTIONS = {
   vocabulary: "vocabulary",
   gaps: "gaps",
 } as const
+
+type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS]
+
+type FirestoreQueryParams = Record<string, unknown>
+
+async function getLoggedDocs(
+  collectionName: CollectionName,
+  queryParams: FirestoreQueryParams,
+  firestoreQuery: Query<DocumentData, DocumentData>
+): Promise<QuerySnapshot<DocumentData, DocumentData>> {
+  try {
+    const snapshot = await getDocs(firestoreQuery)
+
+    console.info("[Firestore] Query succeeded", {
+      collection: collectionName,
+      queryParams,
+      resultCount: snapshot.size,
+    })
+
+    return snapshot
+  } catch (error) {
+    console.error("[Firestore] Query failed", {
+      collection: collectionName,
+      queryParams,
+      error,
+    })
+    throw error
+  }
+}
 
 function timestampOrNull(value: unknown): Timestamp | null {
   return value instanceof Timestamp ? value : null
@@ -102,6 +133,14 @@ function toGap(doc: QueryDocumentSnapshot<DocumentData>): Gap {
   }
 }
 
+function sortByCreatedAtDesc<T extends { createdAt: Timestamp | null }>(
+  items: T[]
+): T[] {
+  return items.sort(
+    (a, b) => (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0)
+  )
+}
+
 export async function saveSession(input: CreateSessionInput): Promise<string> {
   const docRef = await addDoc(collection(db, COLLECTIONS.sessions), {
     ...input,
@@ -114,12 +153,13 @@ export async function saveSession(input: CreateSessionInput): Promise<string> {
 export async function getRecentSessions(
   limitCount = 10
 ): Promise<Session[]> {
-  const snapshot = await getDocs(
-    query(
-      collection(db, COLLECTIONS.sessions),
-      orderBy("createdAt", "desc"),
-      limit(limitCount)
-    )
+  const snapshot = await getLoggedDocs(
+    COLLECTIONS.sessions,
+    {
+      orderBy: { field: "createdAt", direction: "desc" },
+      limit: limitCount,
+    },
+    query(collection(db, COLLECTIONS.sessions), orderBy("createdAt", "desc"), limit(limitCount))
   )
 
   return snapshot.docs.map(toSession)
@@ -129,16 +169,21 @@ export async function getSessionsByLearner(
   learner: Learner,
   limitCount = 10
 ): Promise<Session[]> {
-  const snapshot = await getDocs(
+  const snapshot = await getLoggedDocs(
+    COLLECTIONS.sessions,
+    {
+      where: [{ field: "learner", operator: "==", value: learner }],
+      clientSort: { field: "createdAt", direction: "desc" },
+      limit: limitCount,
+    },
     query(
       collection(db, COLLECTIONS.sessions),
       where("learner", "==", learner),
-      orderBy("createdAt", "desc"),
       limit(limitCount)
     )
   )
 
-  return snapshot.docs.map(toSession)
+  return sortByCreatedAtDesc(snapshot.docs.map(toSession))
 }
 
 export async function saveMistake(input: CreateMistakeInput): Promise<string> {
@@ -161,42 +206,63 @@ export async function saveMistakes(
 export async function getMistakesByLearner(
   learner: Learner
 ): Promise<Mistake[]> {
-  const snapshot = await getDocs(
+  const snapshot = await getLoggedDocs(
+    COLLECTIONS.mistakes,
+    {
+      where: [{ field: "learner", operator: "==", value: learner }],
+      clientSort: { field: "createdAt", direction: "desc" },
+    },
     query(
       collection(db, COLLECTIONS.mistakes),
-      where("learner", "==", learner),
-      orderBy("createdAt", "desc")
+      where("learner", "==", learner)
     )
   )
 
-  return snapshot.docs.map(toMistake)
+  return sortByCreatedAtDesc(snapshot.docs.map(toMistake))
 }
 
 export async function getMistakesBySession(
   sessionId: string
 ): Promise<Mistake[]> {
-  const snapshot = await getDocs(
+  const snapshot = await getLoggedDocs(
+    COLLECTIONS.mistakes,
+    {
+      where: [{ field: "sessionId", operator: "==", value: sessionId }],
+      clientSort: { field: "createdAt", direction: "desc" },
+    },
     query(
       collection(db, COLLECTIONS.mistakes),
-      where("sessionId", "==", sessionId),
-      orderBy("createdAt", "desc")
+      where("sessionId", "==", sessionId)
     )
   )
 
-  return snapshot.docs.map(toMistake)
+  return sortByCreatedAtDesc(snapshot.docs.map(toMistake))
 }
 
 export async function getDueMistakes(learner: Learner): Promise<Mistake[]> {
-  const snapshot = await getDocs(
+  const snapshot = await getLoggedDocs(
+    COLLECTIONS.mistakes,
+    {
+      where: [{ field: "learner", operator: "==", value: learner }],
+      clientSort: { field: "createdAt", direction: "desc" },
+      clientFilter: "nextReview is null or nextReview <= now",
+    },
     query(
       collection(db, COLLECTIONS.mistakes),
-      where("learner", "==", learner),
-      where("nextReview", "<=", Timestamp.now()),
-      orderBy("nextReview", "asc")
+      where("learner", "==", learner)
     )
   )
 
-  return snapshot.docs.map(toMistake)
+  const now = Timestamp.now().toMillis()
+
+  return snapshot.docs
+    .map(toMistake)
+    .filter(
+      (mistake) => !mistake.nextReview || mistake.nextReview.toMillis() <= now
+    )
+    .sort(
+      (a, b) => (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0)
+    )
 }
 
 export async function saveVocabulary(
@@ -221,44 +287,63 @@ export async function saveVocabularyItems(
 export async function getVocabularyByLearner(
   learner: Learner
 ): Promise<Vocabulary[]> {
-  const snapshot = await getDocs(
+  const snapshot = await getLoggedDocs(
+    COLLECTIONS.vocabulary,
+    {
+      where: [{ field: "learner", operator: "==", value: learner }],
+      clientSort: { field: "createdAt", direction: "desc" },
+    },
     query(
       collection(db, COLLECTIONS.vocabulary),
-      where("learner", "==", learner),
-      orderBy("createdAt", "desc")
+      where("learner", "==", learner)
     )
   )
 
-  return snapshot.docs.map(toVocabulary)
+  return sortByCreatedAtDesc(snapshot.docs.map(toVocabulary))
 }
 
 export async function getVocabularyBySession(
   sessionId: string
 ): Promise<Vocabulary[]> {
-  const snapshot = await getDocs(
+  const snapshot = await getLoggedDocs(
+    COLLECTIONS.vocabulary,
+    {
+      where: [{ field: "sessionId", operator: "==", value: sessionId }],
+      clientSort: { field: "createdAt", direction: "desc" },
+    },
     query(
       collection(db, COLLECTIONS.vocabulary),
-      where("sessionId", "==", sessionId),
-      orderBy("createdAt", "desc")
+      where("sessionId", "==", sessionId)
     )
   )
 
-  return snapshot.docs.map(toVocabulary)
+  return sortByCreatedAtDesc(snapshot.docs.map(toVocabulary))
 }
 
 export async function getDueVocabulary(
   learner: Learner
 ): Promise<Vocabulary[]> {
-  const snapshot = await getDocs(
+  const snapshot = await getLoggedDocs(
+    COLLECTIONS.vocabulary,
+    {
+      where: [{ field: "learner", operator: "==", value: learner }],
+      clientSort: { field: "createdAt", direction: "desc" },
+      clientFilter: "nextReview is null or nextReview <= now",
+    },
     query(
       collection(db, COLLECTIONS.vocabulary),
-      where("learner", "==", learner),
-      where("nextReview", "<=", Timestamp.now()),
-      orderBy("nextReview", "asc")
+      where("learner", "==", learner)
     )
   )
 
-  return snapshot.docs.map(toVocabulary)
+  const now = Timestamp.now().toMillis()
+
+  return snapshot.docs
+    .map(toVocabulary)
+    .filter((item) => !item.nextReview || item.nextReview.toMillis() <= now)
+    .sort(
+      (a, b) => (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0)
+    )
 }
 
 export async function saveGap(input: CreateGapInput): Promise<string> {
@@ -275,25 +360,33 @@ export async function saveGaps(inputs: CreateGapInput[]): Promise<string[]> {
 }
 
 export async function getGapsByLearner(learner: Learner): Promise<Gap[]> {
-  const snapshot = await getDocs(
+  const snapshot = await getLoggedDocs(
+    COLLECTIONS.gaps,
+    {
+      where: [{ field: "learner", operator: "==", value: learner }],
+      clientSort: { field: "createdAt", direction: "desc" },
+    },
     query(
       collection(db, COLLECTIONS.gaps),
-      where("learner", "==", learner),
-      orderBy("createdAt", "desc")
+      where("learner", "==", learner)
     )
   )
 
-  return snapshot.docs.map(toGap)
+  return sortByCreatedAtDesc(snapshot.docs.map(toGap))
 }
 
 export async function getGapsBySession(sessionId: string): Promise<Gap[]> {
-  const snapshot = await getDocs(
+  const snapshot = await getLoggedDocs(
+    COLLECTIONS.gaps,
+    {
+      where: [{ field: "sessionId", operator: "==", value: sessionId }],
+      clientSort: { field: "createdAt", direction: "desc" },
+    },
     query(
       collection(db, COLLECTIONS.gaps),
-      where("sessionId", "==", sessionId),
-      orderBy("createdAt", "desc")
+      where("sessionId", "==", sessionId)
     )
   )
 
-  return snapshot.docs.map(toGap)
+  return sortByCreatedAtDesc(snapshot.docs.map(toGap))
 }
