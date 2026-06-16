@@ -9,6 +9,8 @@ import {
   AlertCircle,
   TrendingUp,
   Languages,
+  Map,
+  Library,
 } from "lucide-react"
 import {
   Sidebar,
@@ -39,6 +41,8 @@ const nav: { id: NavScreen; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "vocabulary", label: "Vocabulary", icon: BookOpen },
   { id: "mistakes", label: "Mistakes", icon: AlertCircle },
   { id: "progress", label: "Progress", icon: TrendingUp },
+  { id: "roadmaps", label: "Roadmaps", icon: Map },
+  { id: "grammar-resources", label: "Grammar Resources", icon: Library },
 ]
 
 export function AppSidebar() {

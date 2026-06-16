@@ -11,6 +11,8 @@ export type Screen =
   | "vocabulary"
   | "mistakes"
   | "progress"
+  | "roadmaps"
+  | "grammar-resources"
 
 type AppState = {
   learner: LearnerFilter

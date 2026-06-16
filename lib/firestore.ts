@@ -22,12 +22,14 @@ import { db } from "@/lib/firebase"
 import type {
   CreateGapInput,
   CreateMistakeInput,
+  CreateRoadmapProgressInput,
   CreateSessionInput,
   CreateVocabularyInput,
   Gap,
   Learner,
   Mistake,
   MistakeStatus,
+  RoadmapProgress,
   Session,
   Vocabulary,
   VocabularyStatus,
@@ -38,6 +40,7 @@ const COLLECTIONS = {
   mistakes: "mistakes",
   vocabulary: "vocabulary",
   gaps: "gaps",
+  roadmapProgress: "roadmapProgress",
 } as const
 
 type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS]
@@ -84,6 +87,11 @@ function toSession(doc: QueryDocumentSnapshot<DocumentData> | DocumentSnapshot<D
     notes: data.notes,
     summary: data.summary,
     nextFocus: data.nextFocus,
+    roadmapId: typeof data.roadmapId === "string" ? data.roadmapId : undefined,
+    phaseId: typeof data.phaseId === "string" ? data.phaseId : undefined,
+    milestoneId: typeof data.milestoneId === "string" ? data.milestoneId : undefined,
+    grammarFocusId:
+      typeof data.grammarFocusId === "string" ? data.grammarFocusId : undefined,
     createdAt: timestampOrNull(data.createdAt),
   }
 }
@@ -139,6 +147,33 @@ function toGap(doc: QueryDocumentSnapshot<DocumentData>): Gap {
   }
 }
 
+function toRoadmapProgress(
+  doc: QueryDocumentSnapshot<DocumentData>
+): RoadmapProgress {
+  const data = doc.data()
+
+  return {
+    id: doc.id,
+    learner: data.learner,
+    roadmapId: data.roadmapId,
+    currentPhaseId: data.currentPhaseId,
+    completedMilestoneIds: Array.isArray(data.completedMilestoneIds)
+      ? data.completedMilestoneIds
+      : [],
+    inProgressMilestoneIds: Array.isArray(data.inProgressMilestoneIds)
+      ? data.inProgressMilestoneIds
+      : [],
+    startedAt: timestampOrNull(data.startedAt),
+    updatedAt: timestampOrNull(data.updatedAt),
+  }
+}
+
+function withoutUndefined<T extends Record<string, unknown>>(input: T) {
+  return Object.fromEntries(
+    Object.entries(input).filter(([, value]) => value !== undefined)
+  )
+}
+
 function sortByCreatedAtDesc<T extends { createdAt: Timestamp | null }>(
   items: T[]
 ): T[] {
@@ -149,7 +184,7 @@ function sortByCreatedAtDesc<T extends { createdAt: Timestamp | null }>(
 
 export async function saveSession(input: CreateSessionInput): Promise<string> {
   const docRef = await addDoc(collection(db, COLLECTIONS.sessions), {
-    ...input,
+    ...withoutUndefined(input),
     createdAt: serverTimestamp(),
   })
 
@@ -436,4 +471,125 @@ export async function getGapsBySession(sessionId: string): Promise<Gap[]> {
   )
 
   return sortByCreatedAtDesc(snapshot.docs.map(toGap))
+}
+
+export async function saveRoadmapProgress(
+  input: CreateRoadmapProgressInput
+): Promise<string> {
+  const docRef = await addDoc(collection(db, COLLECTIONS.roadmapProgress), {
+    ...input,
+    startedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  })
+
+  return docRef.id
+}
+
+export async function getRoadmapProgress(
+  learner: Learner,
+  roadmapId: string
+): Promise<RoadmapProgress | null> {
+  const snapshot = await getLoggedDocs(
+    COLLECTIONS.roadmapProgress,
+    {
+      where: [
+        { field: "learner", operator: "==", value: learner },
+        { field: "roadmapId", operator: "==", value: roadmapId },
+      ],
+      limit: 1,
+    },
+    query(
+      collection(db, COLLECTIONS.roadmapProgress),
+      where("learner", "==", learner),
+      where("roadmapId", "==", roadmapId),
+      limit(1)
+    )
+  )
+
+  return snapshot.docs[0] ? toRoadmapProgress(snapshot.docs[0]) : null
+}
+
+export async function updateRoadmapProgress(
+  progressId: string,
+  input: Partial<
+    Pick<
+      RoadmapProgress,
+      "currentPhaseId" | "completedMilestoneIds" | "inProgressMilestoneIds"
+    >
+  >
+): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.roadmapProgress, progressId), {
+    ...input,
+    updatedAt: serverTimestamp(),
+  })
+}
+
+async function getOrCreateRoadmapProgress(
+  learner: Learner,
+  roadmapId: string,
+  currentPhaseId: string
+) {
+  const existing = await getRoadmapProgress(learner, roadmapId)
+
+  if (existing) {
+    return existing
+  }
+
+  const id = await saveRoadmapProgress({
+    learner,
+    roadmapId,
+    currentPhaseId,
+    completedMilestoneIds: [],
+    inProgressMilestoneIds: [],
+  })
+
+  return {
+    id,
+    learner,
+    roadmapId,
+    currentPhaseId,
+    completedMilestoneIds: [],
+    inProgressMilestoneIds: [],
+    startedAt: null,
+    updatedAt: null,
+  } satisfies RoadmapProgress
+}
+
+export async function markMilestoneInProgress(
+  learner: Learner,
+  roadmapId: string,
+  phaseId: string,
+  milestoneId: string
+): Promise<void> {
+  const progress = await getOrCreateRoadmapProgress(learner, roadmapId, phaseId)
+
+  if (progress.completedMilestoneIds.includes(milestoneId)) {
+    return
+  }
+
+  await updateRoadmapProgress(progress.id, {
+    currentPhaseId: phaseId,
+    inProgressMilestoneIds: Array.from(
+      new Set([...progress.inProgressMilestoneIds, milestoneId])
+    ),
+  })
+}
+
+export async function markMilestoneCompleted(
+  learner: Learner,
+  roadmapId: string,
+  phaseId: string,
+  milestoneId: string
+): Promise<void> {
+  const progress = await getOrCreateRoadmapProgress(learner, roadmapId, phaseId)
+
+  await updateRoadmapProgress(progress.id, {
+    currentPhaseId: phaseId,
+    completedMilestoneIds: Array.from(
+      new Set([...progress.completedMilestoneIds, milestoneId])
+    ),
+    inProgressMilestoneIds: progress.inProgressMilestoneIds.filter(
+      (id) => id !== milestoneId
+    ),
+  })
 }

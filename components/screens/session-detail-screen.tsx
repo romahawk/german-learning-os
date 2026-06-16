@@ -23,6 +23,12 @@ import {
 } from "@/lib/firestore"
 import { formatTimestamp, LEARNING_DATA_CHANGED_EVENT } from "@/lib/learning-firestore-ui"
 import { sessionModes } from "@/lib/data"
+import { getGrammarItemById } from "@/lib/grammar"
+import {
+  getRoadmapById,
+  getRoadmapMilestone,
+  getRoadmapPhase,
+} from "@/lib/roadmaps"
 import type { Gap, Mistake, Session, Vocabulary } from "@/lib/types"
 
 export function SessionDetailScreen() {
@@ -71,6 +77,14 @@ export function SessionDetailScreen() {
   }, [loadSession])
 
   const mode = sessionModes.find((item) => item.value === session?.mode)
+  const roadmap = getRoadmapById(session?.roadmapId)
+  const roadmapPhase = getRoadmapPhase(session?.roadmapId, session?.phaseId)
+  const roadmapMilestone = getRoadmapMilestone(
+    session?.roadmapId,
+    session?.phaseId,
+    session?.milestoneId
+  )
+  const grammarFocus = getGrammarItemById(session?.grammarFocusId)
 
   if (!selectedSessionId) {
     return (
@@ -139,6 +153,36 @@ export function SessionDetailScreen() {
                 <p className="mb-1 font-medium">Next focus</p>
                 <p className="text-muted-foreground">{session.nextFocus}</p>
               </div>
+              <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+                <p className="mb-2 font-medium">Roadmap link</p>
+                {roadmap ? (
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="outline">{roadmap.title}</Badge>
+                    {roadmapPhase && (
+                      <Badge variant="secondary">{roadmapPhase.title}</Badge>
+                    )}
+                    {roadmapMilestone && (
+                      <Badge variant="secondary">{roadmapMilestone.title}</Badge>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">No roadmap linked.</p>
+                )}
+              </div>
+              {grammarFocus && (
+                <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+                  <p className="mb-2 font-medium">Grammar focus</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="outline">{grammarFocus.level}</Badge>
+                    <Badge variant="secondary">{grammarFocus.title}</Badge>
+                    {grammarFocus.tags.slice(0, 3).map((tag) => (
+                      <Badge key={tag} variant="secondary">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
               {session.notes && (
                 <>
                   <Separator />

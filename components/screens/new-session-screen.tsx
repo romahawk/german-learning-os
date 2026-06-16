@@ -24,6 +24,8 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { grammarItems, selectedGrammarFocusStorageKey } from "@/lib/grammar"
+import { roadmaps } from "@/lib/roadmaps"
 import {
   ToggleGroup,
   ToggleGroupItem,
@@ -105,6 +107,11 @@ export function NewSessionScreen() {
   const [mode, setMode] = React.useState<SessionMode>("conversation")
   const [duration, setDuration] = React.useState("20")
   const [notes, setNotes] = React.useState("")
+  const [selectedRoadmapId, setSelectedRoadmapId] = React.useState("none")
+  const [selectedPhaseId, setSelectedPhaseId] = React.useState("none")
+  const [selectedMilestoneId, setSelectedMilestoneId] = React.useState("none")
+  const [selectedGrammarFocusId, setSelectedGrammarFocusId] =
+    React.useState("none")
   const [analyzing, setAnalyzing] = React.useState(false)
   const [saving, setSaving] = React.useState(false)
   const [transcribing, setTranscribing] = React.useState(false)
@@ -117,10 +124,43 @@ export function NewSessionScreen() {
   const fileInputRef = React.useRef<HTMLInputElement | null>(null)
   const mediaRecorderRef = React.useRef<MediaRecorder | null>(null)
   const audioChunksRef = React.useRef<Blob[]>([])
+  const selectedRoadmap =
+    roadmaps.find((roadmap) => roadmap.id === selectedRoadmapId) ?? null
+  const selectedPhase =
+    selectedRoadmap?.phases.find((phase) => phase.id === selectedPhaseId) ??
+    null
+  const selectedMilestone =
+    selectedPhase?.milestones.find(
+      (milestone) => milestone.id === selectedMilestoneId
+    ) ?? null
+  const selectedGrammarFocus =
+    grammarItems.find((item) => item.id === selectedGrammarFocusId) ?? null
 
   React.useEffect(() => {
     setSelectedLearner(defaultLearner)
   }, [defaultLearner])
+
+  React.useEffect(() => {
+    setSelectedPhaseId("none")
+    setSelectedMilestoneId("none")
+  }, [selectedRoadmapId])
+
+  React.useEffect(() => {
+    setSelectedMilestoneId("none")
+  }, [selectedPhaseId])
+
+  React.useEffect(() => {
+    const savedGrammarFocusId = window.localStorage.getItem(
+      selectedGrammarFocusStorageKey
+    )
+
+    if (
+      savedGrammarFocusId &&
+      grammarItems.some((item) => item.id === savedGrammarFocusId)
+    ) {
+      setSelectedGrammarFocusId(savedGrammarFocusId)
+    }
+  }, [])
 
   React.useEffect(() => {
     return () => {
@@ -352,6 +392,10 @@ export function NewSessionScreen() {
           notes,
           summary: result.summary,
           nextFocus: result.nextFocus,
+          roadmapId: selectedRoadmap?.id,
+          phaseId: selectedPhase?.id,
+          milestoneId: selectedMilestone?.id,
+          grammarFocusId: selectedGrammarFocus?.id,
         })
       } catch (err) {
         throw new Error("Could not save the session summary. Please try again.")
@@ -490,6 +534,87 @@ export function NewSessionScreen() {
                   </ToggleGroupItem>
                 ))}
               </ToggleGroup>
+            </Field>
+
+            <Field>
+              <FieldLabel htmlFor="roadmap">Roadmap link</FieldLabel>
+              <select
+                id="roadmap"
+                value={selectedRoadmapId}
+                onChange={(event) => setSelectedRoadmapId(event.target.value)}
+                className="h-8 w-full max-w-md rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <option value="none">No roadmap</option>
+                {roadmaps.map((roadmap) => (
+                  <option key={roadmap.id} value={roadmap.id}>
+                    {roadmap.title}
+                  </option>
+                ))}
+              </select>
+              <FieldDescription>
+                Optional. Link this session to a learning milestone without changing milestone progress automatically.
+              </FieldDescription>
+            </Field>
+
+            {selectedRoadmap && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field>
+                  <FieldLabel htmlFor="roadmap-phase">Phase</FieldLabel>
+                  <select
+                    id="roadmap-phase"
+                    value={selectedPhaseId}
+                    onChange={(event) => setSelectedPhaseId(event.target.value)}
+                    className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    <option value="none">No phase</option>
+                    {selectedRoadmap.phases.map((phase) => (
+                      <option key={phase.id} value={phase.id}>
+                        {phase.title}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+
+                <Field>
+                  <FieldLabel htmlFor="roadmap-milestone">Milestone</FieldLabel>
+                  <select
+                    id="roadmap-milestone"
+                    value={selectedMilestoneId}
+                    onChange={(event) => setSelectedMilestoneId(event.target.value)}
+                    disabled={!selectedPhase}
+                    className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="none">No milestone</option>
+                    {selectedPhase?.milestones.map((milestone) => (
+                      <option key={milestone.id} value={milestone.id}>
+                        {milestone.title}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+            )}
+
+            <Field>
+              <FieldLabel htmlFor="grammar-focus">Grammar focus</FieldLabel>
+              <select
+                id="grammar-focus"
+                value={selectedGrammarFocusId}
+                onChange={(event) =>
+                  setSelectedGrammarFocusId(event.target.value)
+                }
+                className="h-8 w-full max-w-md rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <option value="none">No grammar focus</option>
+                {grammarItems.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.level} - {item.title}
+                  </option>
+                ))}
+              </select>
+              <FieldDescription>
+                Optional. Save a reference topic with this session for later review.
+              </FieldDescription>
             </Field>
 
             <Field>

@@ -27,6 +27,12 @@ Implemented:
 - Progress screen reads Firestore data for metrics, weekly activity, progress trend, and recurring gaps.
 - Sidebar review badge reads Firestore due counts.
 - Review actions update Firestore statuses, frequencies, and next review dates.
+- Structured roadmaps for B1 General, B2 General, and B2 Beruf.
+- Roadmap progress persists in Firestore.
+- Sessions can optionally link to roadmap milestones.
+- Grammar Resources page with static German grammar content.
+- Grammar Resources search, level filters, and category filters.
+- Sessions can optionally link to a grammar focus.
 - Audio upload and browser voice recording transcribe through OpenAI and fill session notes.
 - Empty/loading/error states exist on the main Firestore-backed screens.
 
@@ -111,6 +117,58 @@ Acceptance criteria:
 
 - [x] User can complete a daily review session.
 - [x] Resolved/known items update dashboard/progress.
+
+## Phase 2.5 - Structured Roadmaps
+
+Status: done for the MVP loop
+
+Goal:
+
+Guide learning with B1 General, B2 General and B2 Beruf tracks.
+
+Tasks:
+
+- [x] Add static roadmap definitions.
+- [x] Add Roadmaps page.
+- [x] Add learner roadmap progress.
+- [x] Link sessions to roadmap milestones.
+- [x] Show roadmap metadata in session detail.
+
+Acceptance criteria:
+
+- [x] User can view all three roadmaps.
+- [x] User can mark milestones in progress/completed.
+- [x] User can optionally link a saved session to a milestone.
+- [x] Roadmap progress persists in Firestore.
+
+## Phase 2.6 - Grammar Resources
+
+Status: done for the MVP loop
+
+Goal:
+
+Make common German grammar reference material usable during practice and attachable to saved sessions.
+
+Tasks:
+
+- [x] Add static grammar resource definitions.
+- [x] Add Grammar Resources page.
+- [x] Add search, level filters, and category filters.
+- [x] Render responsive grammar tables.
+- [x] Show common mistakes and quick drill prompts.
+- [x] Add local "Use for next drill" selection.
+- [x] Add optional Grammar Focus selector to New Session.
+- [x] Save `grammarFocusId` on sessions when selected.
+- [x] Show linked grammar focus in session detail.
+- [ ] Later connect grammar focus to AI drill generation.
+
+Acceptance criteria:
+
+- [x] User can browse sein/haben/werden, irregular verbs, Partizip I/II, articles/cases, prepositions, word order, and Beruf phrases.
+- [x] User can search and filter grammar resources.
+- [x] Tables render cleanly across desktop and mobile layouts.
+- [x] User can select a resource for the next drill locally.
+- [x] A saved session can include and display a linked grammar focus.
 
 ## Phase 3 - Audio and Voice
 

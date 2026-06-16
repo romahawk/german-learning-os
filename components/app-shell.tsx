@@ -20,6 +20,8 @@ import { ReviewScreen } from "@/components/screens/review-screen"
 import { VocabularyScreen } from "@/components/screens/vocabulary-screen"
 import { MistakesScreen } from "@/components/screens/mistakes-screen"
 import { ProgressScreen } from "@/components/screens/progress-screen"
+import { RoadmapsScreen } from "@/components/screens/roadmaps-screen"
+import { GrammarResourcesScreen } from "@/components/screens/grammar-resources-screen"
 
 const meta: Record<Screen, { title: string; subtitle: string }> = {
   dashboard: { title: "Dashboard", subtitle: "Your family's German learning at a glance." },
@@ -29,6 +31,8 @@ const meta: Record<Screen, { title: string; subtitle: string }> = {
   vocabulary: { title: "Vocabulary", subtitle: "Words collected from every session." },
   mistakes: { title: "Mistakes", subtitle: "Corrections, categorized and scheduled." },
   progress: { title: "Progress", subtitle: "Trends and recurring gaps over time." },
+  roadmaps: { title: "Roadmaps", subtitle: "Structured B1, B2, and B2 Beruf learning tracks." },
+  "grammar-resources": { title: "Grammar Resources", subtitle: "Reference tables, common mistakes, and drill focus." },
 }
 
 function ScreenRouter() {
@@ -48,6 +52,10 @@ function ScreenRouter() {
       return <MistakesScreen />
     case "progress":
       return <ProgressScreen />
+    case "roadmaps":
+      return <RoadmapsScreen />
+    case "grammar-resources":
+      return <GrammarResourcesScreen />
   }
 }
 
