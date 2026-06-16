@@ -39,6 +39,10 @@ export type Session = {
   notes: string
   summary: string
   nextFocus: string
+  roadmapId?: string
+  phaseId?: string
+  milestoneId?: string
+  grammarFocusId?: string
   createdAt: Timestamp | null
 }
 
@@ -81,6 +85,17 @@ export type Gap = {
   createdAt: Timestamp | null
 }
 
+export type RoadmapProgress = {
+  id: string
+  learner: Learner
+  roadmapId: string
+  currentPhaseId: string
+  completedMilestoneIds: string[]
+  inProgressMilestoneIds: string[]
+  startedAt: Timestamp | null
+  updatedAt: Timestamp | null
+}
+
 export type CreateSessionInput = Omit<Session, "id" | "createdAt">
 
 export type CreateMistakeInput = Omit<
@@ -100,3 +115,8 @@ export type CreateVocabularyInput = Omit<
 }
 
 export type CreateGapInput = Omit<Gap, "id" | "createdAt">
+
+export type CreateRoadmapProgressInput = Omit<
+  RoadmapProgress,
+  "id" | "startedAt" | "updatedAt"
+>

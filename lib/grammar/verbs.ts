@@ -1,0 +1,125 @@
+import type { GrammarSection } from "./types"
+
+export const verbsGrammar: GrammarSection = {
+  id: "verbs",
+  title: "Verbs",
+  description: "Verb tables, irregular forms, and participles.",
+  categories: [
+    {
+      id: "verb-tables",
+      title: "Verb tables",
+      description: "Reference forms for common German verbs.",
+      items: [
+        {
+          id: "regular-verbs-machen",
+          title: "Regular verbs - machen",
+          level: "A1",
+          tags: ["regular verbs", "machen", "present"],
+          explanation: "Regular Präsens verbs usually keep the stem and add predictable endings.",
+          examples: [
+            { german: "Ich mache jeden Tag Deutsch.", english: "I do German every day." },
+            { german: "Was machst du beruflich?", english: "What do you do professionally?" },
+          ],
+          tables: [
+            {
+              title: "machen - Präsens",
+              headers: ["Person", "Form"],
+              rows: [
+                ["ich", "mache"],
+                ["du", "machst"],
+                ["er/sie/es", "macht"],
+                ["wir", "machen"],
+                ["ihr", "macht"],
+                ["sie/Sie", "machen"],
+              ],
+            },
+          ],
+          quickDrillPrompt: "Conjugate five regular verbs using machen as the pattern.",
+        },
+        {
+          id: "irregular-verbs-overview",
+          title: "Irregular verbs overview",
+          level: "B1",
+          tags: ["irregular verbs", "Präteritum", "Partizip II"],
+          explanation: "These verbs are frequent and should be recognized in Präsens, Präteritum, and Perfekt.",
+          examples: [],
+          tables: [
+            {
+              title: "Common irregular verbs",
+              headers: ["Infinitiv", "Präsens 3. Person", "Präteritum", "Partizip II", "English"],
+              rows: [
+                ["sein", "ist", "war", "gewesen", "be"],
+                ["haben", "hat", "hatte", "gehabt", "have"],
+                ["werden", "wird", "wurde", "geworden", "become"],
+                ["gehen", "geht", "ging", "gegangen", "go"],
+                ["kommen", "kommt", "kam", "gekommen", "come"],
+                ["fahren", "fährt", "fuhr", "gefahren", "drive/go"],
+                ["sehen", "sieht", "sah", "gesehen", "see"],
+                ["sprechen", "spricht", "sprach", "gesprochen", "speak"],
+                ["nehmen", "nimmt", "nahm", "genommen", "take"],
+                ["geben", "gibt", "gab", "gegeben", "give"],
+                ["finden", "findet", "fand", "gefunden", "find"],
+                ["schreiben", "schreibt", "schrieb", "geschrieben", "write"],
+                ["lesen", "liest", "las", "gelesen", "read"],
+                ["essen", "isst", "aß", "gegessen", "eat"],
+                ["trinken", "trinkt", "trank", "getrunken", "drink"],
+                ["helfen", "hilft", "half", "geholfen", "help"],
+                ["bleiben", "bleibt", "blieb", "geblieben", "stay"],
+                ["bringen", "bringt", "brachte", "gebracht", "bring"],
+                ["denken", "denkt", "dachte", "gedacht", "think"],
+                ["wissen", "weiß", "wusste", "gewusst", "know"],
+              ],
+            },
+          ],
+          quickDrillPrompt: "Practice ten irregular verbs in Präsens and Perfekt.",
+        },
+        {
+          id: "partizip-ii",
+          title: "Partizip II",
+          level: "A2",
+          tags: ["Perfekt", "Partizip II", "passive"],
+          explanation: "Partizip II is used mainly for Perfekt and passive. Patterns include regular ge + stem + t, irregular ge + stem change + en, no ge- for inseparable verbs, and no ge- for verbs ending in -ieren.",
+          examples: [
+            { german: "Ich habe gelernt.", english: "I studied/learned." },
+            { german: "Ich bin nach Hamburg gefahren.", english: "I went/drove to Hamburg." },
+            { german: "Ich habe die Firma besucht.", english: "I visited the company." },
+            { german: "Ich habe Informatik studiert.", english: "I studied computer science." },
+          ],
+          tables: [
+            {
+              title: "Partizip II patterns",
+              headers: ["Pattern", "Example"],
+              rows: [
+                ["regular: ge + stem + t", "machen -> gemacht"],
+                ["irregular: ge + stem change + en", "gehen -> gegangen"],
+                ["inseparable verbs: no ge-", "besuchen -> besucht"],
+                ["-ieren verbs: no ge-", "studieren -> studiert"],
+              ],
+            },
+          ],
+          commonMistakes: [
+            { wrong: "Ich habe gegangen.", correct: "Ich bin gegangen.", explanation: "Motion/change-of-place verbs usually use sein in Perfekt." },
+            { wrong: "Ich habe ge-studiert.", correct: "Ich habe studiert.", explanation: "Verbs ending in -ieren do not take ge-." },
+          ],
+          quickDrillPrompt: "Sort verbs into haben/sein Perfekt and form Partizip II.",
+        },
+        {
+          id: "partizip-i",
+          title: "Partizip I",
+          level: "B2",
+          tags: ["Partizip I", "formal", "adjectives"],
+          explanation: "Partizip I describes an ongoing action, similar to doing, speaking, or working. Formation: infinitive + d. It is mostly written/formal German and less important for everyday speaking than Partizip II.",
+          examples: [
+            { german: "machen -> machend", english: "doing/making" },
+            { german: "sprechen -> sprechend", english: "speaking" },
+            { german: "arbeiten -> arbeitend", english: "working" },
+            { german: "die lernenden Teilnehmer", english: "the learning participants" },
+            { german: "eine arbeitende Mutter", english: "a working mother" },
+            { german: "ein sprechender Kollege", english: "a speaking colleague" },
+          ],
+          quickDrillPrompt: "Transform five infinitives into Partizip I adjective phrases.",
+        },
+      ],
+    },
+  ],
+}
