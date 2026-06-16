@@ -3,6 +3,8 @@
 import * as React from "react"
 import {
   Mic,
+  Upload,
+  Square,
   Sparkles,
   AlertCircle,
   BookOpen,
@@ -18,6 +20,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
@@ -86,6 +89,12 @@ type Analysis = {
   }[]
 }
 
+type TranscriptionResponse = {
+  transcript: string
+  fileName: string
+  fileSize: number
+}
+
 export function NewSessionScreen() {
   const { learner } = useApp()
   const defaultLearner: LearnerId =
@@ -98,13 +107,163 @@ export function NewSessionScreen() {
   const [notes, setNotes] = React.useState("")
   const [analyzing, setAnalyzing] = React.useState(false)
   const [saving, setSaving] = React.useState(false)
+  const [transcribing, setTranscribing] = React.useState(false)
+  const [recording, setRecording] = React.useState(false)
   const [result, setResult] = React.useState<Analysis | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [saveError, setSaveError] = React.useState<string | null>(null)
+  const [audioError, setAudioError] = React.useState<string | null>(null)
+  const [audioFileName, setAudioFileName] = React.useState<string | null>(null)
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null)
+  const mediaRecorderRef = React.useRef<MediaRecorder | null>(null)
+  const audioChunksRef = React.useRef<Blob[]>([])
 
   React.useEffect(() => {
     setSelectedLearner(defaultLearner)
   }, [defaultLearner])
+
+  React.useEffect(() => {
+    return () => {
+      if (mediaRecorderRef.current?.state === "recording") {
+        mediaRecorderRef.current.stop()
+      }
+      mediaRecorderRef.current?.stream
+        .getTracks()
+        .forEach((track) => track.stop())
+    }
+  }, [])
+
+  function appendTranscript(transcript: string, sourceLabel: string) {
+    const trimmedTranscript = transcript.trim()
+
+    if (!trimmedTranscript) {
+      toast.error("Transcription returned no text.")
+      return
+    }
+
+    setNotes((currentNotes) => {
+      const separator = currentNotes.trim() ? "\n\n" : ""
+      return `${currentNotes}${separator}[Audio transcript - ${sourceLabel}]\n${trimmedTranscript}`
+    })
+    setResult(null)
+    setError(null)
+    toast.success("Transcript added", {
+      description: "Review it, then analyze the session.",
+    })
+  }
+
+  async function transcribeAudio(file: File) {
+    setTranscribing(true)
+    setAudioError(null)
+    setAudioFileName(file.name)
+
+    try {
+      const formData = new FormData()
+      formData.append("audio", file)
+
+      const response = await fetch("/api/transcribe-audio", {
+        method: "POST",
+        body: formData,
+      })
+      const data = (await response.json()) as
+        | TranscriptionResponse
+        | { error?: string }
+
+      if (!response.ok) {
+        throw new Error(
+          "error" in data && data.error
+            ? data.error
+            : "Failed to transcribe audio."
+        )
+      }
+
+      appendTranscript((data as TranscriptionResponse).transcript, file.name)
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to transcribe audio."
+      setAudioError(message)
+      toast.error("Transcription failed", {
+        description: message,
+      })
+    } finally {
+      setTranscribing(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
+    }
+  }
+
+  function handleAudioUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+
+    if (!file) {
+      return
+    }
+
+    void transcribeAudio(file)
+  }
+
+  async function startRecording() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error("Voice recording is not supported in this browser.")
+      return
+    }
+
+    setAudioError(null)
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream)
+
+      audioChunksRef.current = []
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
+        }
+      }
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop())
+        setRecording(false)
+
+        const blob = new Blob(audioChunksRef.current, {
+          type: recorder.mimeType || "audio/webm",
+        })
+
+        if (blob.size === 0) {
+          toast.error("Recording was empty.")
+          return
+        }
+
+        const recordedFile = new File(
+          [blob],
+          `voice-session-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`,
+          { type: blob.type }
+        )
+
+        void transcribeAudio(recordedFile)
+      }
+
+      mediaRecorderRef.current = recorder
+      recorder.start()
+      setRecording(true)
+      toast.success("Recording started")
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Could not start voice recording."
+      setAudioError(message)
+      toast.error("Recording failed", {
+        description: message,
+      })
+    }
+  }
+
+  function stopRecording() {
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.stop()
+    }
+  }
 
   async function analyze() {
     if (!notes.trim()) {
@@ -348,7 +507,10 @@ export function NewSessionScreen() {
             </Field>
 
             <div className="flex flex-wrap gap-3">
-              <Button onClick={analyze} disabled={analyzing || saving}>
+              <Button
+                onClick={analyze}
+                disabled={analyzing || saving || transcribing}
+              >
                 {analyzing ? (
                   <Loader2 data-icon="inline-start" className="animate-spin" />
                 ) : (
@@ -356,15 +518,44 @@ export function NewSessionScreen() {
                 )}
                 {analyzing ? "Analyzing..." : "Analyze session"}
               </Button>
-              <Button variant="outline" type="button">
-                <Mic data-icon="inline-start" />
-                Record voice
+              <Input
+                ref={fileInputRef}
+                type="file"
+                accept="audio/*,video/webm,video/mp4"
+                className="hidden"
+                onChange={handleAudioUpload}
+              />
+              <Button
+                variant="outline"
+                type="button"
+                disabled={analyzing || saving || transcribing || recording}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {transcribing && !recording ? (
+                  <Loader2 data-icon="inline-start" className="animate-spin" />
+                ) : (
+                  <Upload data-icon="inline-start" />
+                )}
+                {transcribing && !recording ? "Transcribing..." : "Upload audio"}
+              </Button>
+              <Button
+                variant={recording ? "destructive" : "outline"}
+                type="button"
+                disabled={analyzing || saving || transcribing}
+                onClick={recording ? stopRecording : () => void startRecording()}
+              >
+                {recording ? (
+                  <Square data-icon="inline-start" />
+                ) : (
+                  <Mic data-icon="inline-start" />
+                )}
+                {recording ? "Stop recording" : "Record voice"}
               </Button>
               <Button
                 type="button"
                 variant="secondary"
                 onClick={saveLearningSession}
-                disabled={!result || analyzing || saving}
+                disabled={!result || analyzing || saving || transcribing || recording}
               >
                 {saving ? (
                   <Loader2 data-icon="inline-start" className="animate-spin" />
@@ -376,6 +567,14 @@ export function NewSessionScreen() {
             </div>
             {saveError && (
               <p className="text-sm text-destructive">{saveError}</p>
+            )}
+            {audioError && (
+              <p className="text-sm text-destructive">{audioError}</p>
+            )}
+            {audioFileName && !audioError && (
+              <p className="text-sm text-muted-foreground">
+                Last audio source: {audioFileName}
+              </p>
             )}
           </FieldGroup>
         </CardContent>
