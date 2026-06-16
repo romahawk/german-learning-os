@@ -14,6 +14,7 @@ import { FirebaseConnectionTest } from "@/components/firebase-connection-test"
 import { LearnerSwitcher } from "@/components/learner-switcher"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { DashboardScreen } from "@/components/screens/dashboard-screen"
+import { SessionDetailScreen } from "@/components/screens/session-detail-screen"
 import { NewSessionScreen } from "@/components/screens/new-session-screen"
 import { ReviewScreen } from "@/components/screens/review-screen"
 import { VocabularyScreen } from "@/components/screens/vocabulary-screen"
@@ -22,6 +23,7 @@ import { ProgressScreen } from "@/components/screens/progress-screen"
 
 const meta: Record<Screen, { title: string; subtitle: string }> = {
   dashboard: { title: "Dashboard", subtitle: "Your family's German learning at a glance." },
+  "session-detail": { title: "Session Detail", subtitle: "Everything saved from one practice session." },
   "new-session": { title: "New Session", subtitle: "Capture and analyze a practice session." },
   review: { title: "Review", subtitle: "Spaced repetition for what's due today." },
   vocabulary: { title: "Vocabulary", subtitle: "Words collected from every session." },
@@ -34,6 +36,8 @@ function ScreenRouter() {
   switch (screen) {
     case "dashboard":
       return <DashboardScreen />
+    case "session-detail":
+      return <SessionDetailScreen />
     case "new-session":
       return <NewSessionScreen />
     case "review":

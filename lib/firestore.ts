@@ -1,6 +1,8 @@
 import {
   addDoc,
   collection,
+  doc,
+  getDoc,
   getDocs,
   limit,
   orderBy,
@@ -9,6 +11,7 @@ import {
   Timestamp,
   where,
   type DocumentData,
+  type DocumentSnapshot,
   type Query,
   type QueryDocumentSnapshot,
   type QuerySnapshot,
@@ -67,8 +70,8 @@ function timestampOrNull(value: unknown): Timestamp | null {
   return value instanceof Timestamp ? value : null
 }
 
-function toSession(doc: QueryDocumentSnapshot<DocumentData>): Session {
-  const data = doc.data()
+function toSession(doc: QueryDocumentSnapshot<DocumentData> | DocumentSnapshot<DocumentData>): Session {
+  const data = doc.data() as DocumentData
 
   return {
     id: doc.id,
@@ -163,6 +166,19 @@ export async function getRecentSessions(
   )
 
   return snapshot.docs.map(toSession)
+}
+
+export async function getSessionById(sessionId: string): Promise<Session | null> {
+  const docRef = doc(db, COLLECTIONS.sessions, sessionId)
+  const snapshot = await getDoc(docRef)
+
+  console.info("[Firestore] Document read", {
+    collection: COLLECTIONS.sessions,
+    id: sessionId,
+    exists: snapshot.exists(),
+  })
+
+  return snapshot.exists() ? toSession(snapshot) : null
 }
 
 export async function getSessionsByLearner(
