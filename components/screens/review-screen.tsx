@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { Check, Clock, CircleCheck, Target, Volume2 } from "lucide-react"
+import { Check, Clock, CircleCheck, Loader2, Plus, Target, Volume2 } from "lucide-react"
+import { Timestamp } from "firebase/firestore"
 import {
   Card,
   CardContent,
@@ -22,37 +23,125 @@ import {
   getDueMistakes,
   getDueVocabulary,
   getGapsByLearner,
+  updateMistakeReview,
+  updateVocabularyReview,
 } from "@/lib/firestore"
 import {
+  announceLearningDataChanged,
   firestoreLearnersForFilter,
   LEARNING_DATA_CHANGED_EVENT,
 } from "@/lib/learning-firestore-ui"
 import type { Gap, Mistake, Vocabulary } from "@/lib/types"
 
-function ActionButtons() {
+type ReviewAction = "mastered" | "repeat" | "practice"
+
+function scheduledTimestamp(daysFromNow: number) {
+  const date = new Date()
+  date.setDate(date.getDate() + daysFromNow)
+  date.setHours(9, 0, 0, 0)
+  return Timestamp.fromDate(date)
+}
+
+function MistakeActionButtons({
+  pending,
+  onAction,
+}: {
+  pending: ReviewAction | null
+  onAction: (action: ReviewAction) => void
+}) {
+  const disabled = pending !== null
+
   return (
     <div className="flex flex-wrap gap-2">
       <Button
         size="sm"
-        onClick={() =>
-          toast("Review actions are preview-only for now.", {
-            description: "Scheduling updates can be added next.",
-          })
-        }
+        disabled={disabled}
+        onClick={() => onAction("mastered")}
       >
-        <Check data-icon="inline-start" />
-        Correct
+        {pending === "mastered" ? (
+          <Loader2 data-icon="inline-start" className="animate-spin" />
+        ) : (
+          <Check data-icon="inline-start" />
+        )}
+        Mark resolved
       </Button>
       <Button
         size="sm"
         variant="outline"
-        onClick={() =>
-          toast("Review actions are preview-only for now.", {
-            description: "This item was not changed in Firestore.",
-          })
-        }
+        disabled={disabled}
+        onClick={() => onAction("repeat")}
       >
-        <Clock data-icon="inline-start" />
+        {pending === "repeat" ? (
+          <Loader2 data-icon="inline-start" className="animate-spin" />
+        ) : (
+          <Clock data-icon="inline-start" />
+        )}
+        Repeat later
+      </Button>
+      <Button
+        size="sm"
+        variant="secondary"
+        disabled={disabled}
+        onClick={() => onAction("practice")}
+      >
+        {pending === "practice" ? (
+          <Loader2 data-icon="inline-start" className="animate-spin" />
+        ) : (
+          <Plus data-icon="inline-start" />
+        )}
+        Increase frequency
+      </Button>
+    </div>
+  )
+}
+
+function VocabularyActionButtons({
+  pending,
+  onAction,
+}: {
+  pending: ReviewAction | null
+  onAction: (action: ReviewAction) => void
+}) {
+  const disabled = pending !== null
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button
+        size="sm"
+        disabled={disabled}
+        onClick={() => onAction("mastered")}
+      >
+        {pending === "mastered" ? (
+          <Loader2 data-icon="inline-start" className="animate-spin" />
+        ) : (
+          <Check data-icon="inline-start" />
+        )}
+        Mark known
+      </Button>
+      <Button
+        size="sm"
+        variant="secondary"
+        disabled={disabled}
+        onClick={() => onAction("practice")}
+      >
+        {pending === "practice" ? (
+          <Loader2 data-icon="inline-start" className="animate-spin" />
+        ) : (
+          <Plus data-icon="inline-start" />
+        )}
+        Still learning
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={disabled}
+        onClick={() => onAction("repeat")}
+      >
+        {pending === "repeat" ? (
+          <Loader2 data-icon="inline-start" className="animate-spin" />
+        ) : (
+          <Clock data-icon="inline-start" />
+        )}
         Repeat later
       </Button>
     </div>
@@ -66,6 +155,13 @@ export function ReviewScreen() {
   const [recentGaps, setRecentGaps] = React.useState<Gap[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
+  const [completedCount, setCompletedCount] = React.useState(0)
+  const [pendingMistakeAction, setPendingMistakeAction] = React.useState<
+    Record<string, ReviewAction>
+  >({})
+  const [pendingVocabularyAction, setPendingVocabularyAction] = React.useState<
+    Record<string, ReviewAction>
+  >({})
 
   const loadReview = React.useCallback(async () => {
     setLoading(true)
@@ -105,9 +201,97 @@ export function ReviewScreen() {
       window.removeEventListener(LEARNING_DATA_CHANGED_EVENT, loadReview)
   }, [loadReview])
 
+  async function reviewMistake(mistake: Mistake, action: ReviewAction) {
+    setPendingMistakeAction((current) => ({
+      ...current,
+      [mistake.id]: action,
+    }))
+
+    try {
+      if (action === "mastered") {
+        await updateMistakeReview(mistake.id, {
+          status: "resolved",
+          nextReview: scheduledTimestamp(30),
+        })
+      }
+
+      if (action === "repeat") {
+        await updateMistakeReview(mistake.id, {
+          status: mistake.status === "new" ? "new" : "recurring",
+          nextReview: scheduledTimestamp(3),
+        })
+      }
+
+      if (action === "practice") {
+        await updateMistakeReview(mistake.id, {
+          status: "recurring",
+          frequency: mistake.frequency + 1,
+          nextReview: scheduledTimestamp(1),
+        })
+      }
+
+      setCompletedCount((count) => count + 1)
+      announceLearningDataChanged()
+      toast.success("Mistake review saved")
+    } catch (error) {
+      console.error("[Firestore] Mistake review update failed", error)
+      toast.error("Could not save mistake review.")
+    } finally {
+      setPendingMistakeAction((current) => {
+        const next = { ...current }
+        delete next[mistake.id]
+        return next
+      })
+    }
+  }
+
+  async function reviewVocabulary(item: Vocabulary, action: ReviewAction) {
+    setPendingVocabularyAction((current) => ({
+      ...current,
+      [item.id]: action,
+    }))
+
+    try {
+      if (action === "mastered") {
+        await updateVocabularyReview(item.id, {
+          status: "known",
+          nextReview: scheduledTimestamp(30),
+        })
+      }
+
+      if (action === "practice") {
+        await updateVocabularyReview(item.id, {
+          status: "drilling",
+          frequency: item.frequency + 1,
+          nextReview: scheduledTimestamp(1),
+        })
+      }
+
+      if (action === "repeat") {
+        await updateVocabularyReview(item.id, {
+          status: item.status === "known" ? "known" : item.status,
+          nextReview: scheduledTimestamp(3),
+        })
+      }
+
+      setCompletedCount((count) => count + 1)
+      announceLearningDataChanged()
+      toast.success("Vocabulary review saved")
+    } catch (error) {
+      console.error("[Firestore] Vocabulary review update failed", error)
+      toast.error("Could not save vocabulary review.")
+    } finally {
+      setPendingVocabularyAction((current) => {
+        const next = { ...current }
+        delete next[item.id]
+        return next
+      })
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardContent className="py-4">
             <p className="text-sm text-muted-foreground">Mistakes due</p>
@@ -124,6 +308,12 @@ export function ReviewScreen() {
           <CardContent className="py-4">
             <p className="text-sm text-muted-foreground">Recent gaps</p>
             <p className="text-2xl font-semibold">{recentGaps.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-4">
+            <p className="text-sm text-muted-foreground">Completed now</p>
+            <p className="text-2xl font-semibold">{completedCount}</p>
           </CardContent>
         </Card>
       </div>
@@ -165,7 +355,10 @@ export function ReviewScreen() {
                         {m.rule}
                       </p>
                     </div>
-                    <ActionButtons />
+                    <MistakeActionButtons
+                      pending={pendingMistakeAction[m.id] ?? null}
+                      onAction={(action) => void reviewMistake(m, action)}
+                    />
                   </CardContent>
                 </Card>
               ))
@@ -209,7 +402,10 @@ export function ReviewScreen() {
                         <Volume2 />
                       </Button>
                     </div>
-                    <ActionButtons />
+                    <VocabularyActionButtons
+                      pending={pendingVocabularyAction[v.id] ?? null}
+                      onAction={(action) => void reviewVocabulary(v, action)}
+                    />
                   </CardContent>
                 </Card>
               ))
