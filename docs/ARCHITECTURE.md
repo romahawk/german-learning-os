@@ -48,7 +48,7 @@ Save to Firestore
 Dashboard / Review / Progress
 ```
 
-## 3. Audio Flow Planned
+## 3. Audio Flow
 
 ```text
 User
@@ -123,9 +123,6 @@ Save to Firestore
 Current:
 
 - `POST /api/analyze-session`
-
-Planned:
-
 - `POST /api/transcribe-audio`
 
 ## 7. Environment Variables
@@ -137,6 +134,7 @@ Planned:
 - `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
 - `NEXT_PUBLIC_FIREBASE_APP_ID`
 - `OPENAI_API_KEY`
+- `OPENAI_TRANSCRIPTION_MODEL` (optional, defaults to `gpt-4o-transcribe`)
 
 Notes:
 
@@ -166,8 +164,5 @@ Before real use:
 
 ## 10. Known Technical Debt
 
-- Some pages may still contain mock data.
-- Review scheduling is basic or not implemented yet.
 - Auth/security rules are not finalized.
-- Audio flow is not implemented yet.
 - Prompt quality needs iteration.

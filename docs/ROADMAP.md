@@ -4,11 +4,11 @@ Last checked: 2026-06-16
 
 ## Current Priority
 
-Next phase: Phase 3 - Audio and Voice.
+Next phase: Phase 4 - Authentication and Security.
 
-1. Add audio transcription.
-2. Add browser voice recording or audio upload.
-3. Add auth/security.
+1. Add auth/security.
+2. Add Firestore security rules.
+3. Add user ownership or family workspace model.
 
 ## Implementation Status Snapshot
 
@@ -27,18 +27,16 @@ Implemented:
 - Progress screen reads Firestore data for metrics, weekly activity, progress trend, and recurring gaps.
 - Sidebar review badge reads Firestore due counts.
 - Review actions update Firestore statuses, frequencies, and next review dates.
+- Audio upload and browser voice recording transcribe through OpenAI and fill session notes.
 - Empty/loading/error states exist on the main Firestore-backed screens.
 
 Partially implemented:
 
 - B2 Beruf mode: session mode exists, but exam-specific workflows and rubrics are not implemented.
-- Audio: UI affordances exist, but upload/record/transcription is not wired.
 - Auth: Firebase auth is initialized, but login/logout and security rules are not implemented.
 
 Not implemented:
 
-- `POST /api/transcribe-audio`.
-- Browser voice recording.
 - Firestore security rules and user ownership model.
 - Portfolio/case-study polish and deployed demo mode.
 
@@ -116,7 +114,7 @@ Acceptance criteria:
 
 ## Phase 3 - Audio and Voice
 
-Status: planned
+Status: done for the MVP loop
 
 Goal:
 
@@ -124,15 +122,15 @@ Support real speaking practice.
 
 Tasks:
 
-- [ ] Add audio file upload.
-- [ ] Transcribe with OpenAI.
-- [ ] Put transcript into session notes.
-- [ ] Analyze transcript.
-- [ ] Later add browser voice recording.
+- [x] Add audio file upload.
+- [x] Transcribe with OpenAI.
+- [x] Put transcript into session notes.
+- [x] Analyze transcript.
+- [x] Add browser voice recording.
 
 Acceptance criteria:
 
-- [ ] User can upload or record audio and turn it into analyzed learning data.
+- [x] User can upload or record audio and turn it into analyzed learning data.
 
 ## Phase 4 - Authentication and Security
 
