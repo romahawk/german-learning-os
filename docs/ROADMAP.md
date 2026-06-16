@@ -4,12 +4,11 @@ Last checked: 2026-06-16
 
 ## Current Priority
 
-Next phase: Phase 2 - Review System.
+Next phase: Phase 3 - Audio and Voice.
 
-1. Add real review actions and scheduling.
-2. Update dashboard/progress immediately when review items are resolved or marked known.
-3. Add audio transcription.
-4. Add auth/security.
+1. Add audio transcription.
+2. Add browser voice recording or audio upload.
+3. Add auth/security.
 
 ## Implementation Status Snapshot
 
@@ -27,12 +26,11 @@ Implemented:
 - Session detail screen reconstructs a saved session with linked mistakes, vocabulary, and gaps.
 - Progress screen reads Firestore data for metrics, weekly activity, progress trend, and recurring gaps.
 - Sidebar review badge reads Firestore due counts.
+- Review actions update Firestore statuses, frequencies, and next review dates.
 - Empty/loading/error states exist on the main Firestore-backed screens.
 
 Partially implemented:
 
-- Review system: due items are displayed, but actions are preview-only and do not update Firestore.
-- Review scheduling: `nextReview` exists in the schema and due-item filtering exists, but scheduling updates are not implemented.
 - B2 Beruf mode: session mode exists, but exam-specific workflows and rubrics are not implemented.
 - Audio: UI affordances exist, but upload/record/transcription is not wired.
 - Auth: Firebase auth is initialized, but login/logout and security rules are not implemented.
@@ -89,7 +87,7 @@ Next work:
 
 ## Phase 2 - Review System
 
-Status: next after Phase 1
+Status: done for the MVP loop
 
 Goal:
 
@@ -100,21 +98,21 @@ Tasks:
 - [x] Display due mistakes.
 - [x] Display due vocabulary.
 - [x] Display recent gaps.
-- [ ] Add review actions for mistakes:
+- [x] Add review actions for mistakes:
   - Mark resolved
   - Repeat later
   - Increase frequency
-- [ ] Add review actions for vocabulary:
+- [x] Add review actions for vocabulary:
   - Mark known
   - Still learning
   - Repeat later
-- [ ] Add `nextReview` scheduling updates.
-- [ ] Add review counters based on completed actions.
+- [x] Add `nextReview` scheduling updates.
+- [x] Add review counters based on completed actions.
 
 Acceptance criteria:
 
-- [ ] User can complete a daily review session.
-- [ ] Resolved/known items update dashboard/progress.
+- [x] User can complete a daily review session.
+- [x] Resolved/known items update dashboard/progress.
 
 ## Phase 3 - Audio and Voice
 

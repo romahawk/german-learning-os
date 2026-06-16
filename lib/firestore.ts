@@ -9,6 +9,7 @@ import {
   query,
   serverTimestamp,
   Timestamp,
+  updateDoc,
   where,
   type DocumentData,
   type DocumentSnapshot,
@@ -26,8 +27,10 @@ import type {
   Gap,
   Learner,
   Mistake,
+  MistakeStatus,
   Session,
   Vocabulary,
+  VocabularyStatus,
 } from "@/lib/types"
 
 const COLLECTIONS = {
@@ -274,11 +277,24 @@ export async function getDueMistakes(learner: Learner): Promise<Mistake[]> {
   return snapshot.docs
     .map(toMistake)
     .filter(
-      (mistake) => !mistake.nextReview || mistake.nextReview.toMillis() <= now
+      (mistake) =>
+        mistake.status !== "resolved" &&
+        (!mistake.nextReview || mistake.nextReview.toMillis() <= now)
     )
     .sort(
       (a, b) => (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0)
     )
+}
+
+export async function updateMistakeReview(
+  mistakeId: string,
+  input: {
+    status?: MistakeStatus
+    frequency?: number
+    nextReview?: Timestamp | null
+  }
+): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.mistakes, mistakeId), input)
 }
 
 export async function saveVocabulary(
@@ -356,10 +372,25 @@ export async function getDueVocabulary(
 
   return snapshot.docs
     .map(toVocabulary)
-    .filter((item) => !item.nextReview || item.nextReview.toMillis() <= now)
+    .filter(
+      (item) =>
+        item.status !== "known" &&
+        (!item.nextReview || item.nextReview.toMillis() <= now)
+    )
     .sort(
       (a, b) => (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0)
     )
+}
+
+export async function updateVocabularyReview(
+  vocabularyId: string,
+  input: {
+    status?: VocabularyStatus
+    frequency?: number
+    nextReview?: Timestamp | null
+  }
+): Promise<void> {
+  await updateDoc(doc(db, COLLECTIONS.vocabulary, vocabularyId), input)
 }
 
 export async function saveGap(input: CreateGapInput): Promise<string> {
