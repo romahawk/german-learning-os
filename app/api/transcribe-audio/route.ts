@@ -22,6 +22,10 @@ const SUPPORTED_AUDIO_TYPES = new Set([
   "video/webm",
 ])
 
+function normalizeMimeType(type: string) {
+  return type.split(";")[0]?.trim().toLowerCase() ?? ""
+}
+
 export async function GET() {
   return NextResponse.json({ ok: true, route: "transcribe-audio" })
 }
@@ -61,7 +65,9 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  if (audio.type && !SUPPORTED_AUDIO_TYPES.has(audio.type)) {
+  const audioType = normalizeMimeType(audio.type)
+
+  if (audioType && !SUPPORTED_AUDIO_TYPES.has(audioType)) {
     return NextResponse.json(
       { error: "Unsupported audio format." },
       { status: 400 }
