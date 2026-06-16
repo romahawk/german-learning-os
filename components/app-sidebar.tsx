@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import {
   LayoutDashboard,
   Plus,
@@ -23,14 +24,15 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { useApp, type Screen } from "@/components/app-context"
+import { getDueMistakes, getDueVocabulary } from "@/lib/firestore"
 import {
-  dueToday,
-  filterByLearner,
-  mistakes,
-  vocabulary,
-} from "@/lib/data"
+  firestoreLearnersForFilter,
+  LEARNING_DATA_CHANGED_EVENT,
+} from "@/lib/learning-firestore-ui"
 
-const nav: { id: Screen; label: string; icon: typeof LayoutDashboard }[] = [
+type NavScreen = Exclude<Screen, "session-detail">
+
+const nav: { id: NavScreen; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "new-session", label: "New Session", icon: Plus },
   { id: "review", label: "Review", icon: RotateCcw },
@@ -41,10 +43,30 @@ const nav: { id: Screen; label: string; icon: typeof LayoutDashboard }[] = [
 
 export function AppSidebar() {
   const { screen, setScreen, learner } = useApp()
+  const [dueCount, setDueCount] = React.useState(0)
 
-  const dueCount =
-    dueToday(filterByLearner(mistakes, learner)).length +
-    dueToday(filterByLearner(vocabulary, learner)).length
+  const loadDueCount = React.useCallback(async () => {
+    try {
+      const learners = firestoreLearnersForFilter(learner)
+      const [mistakes, vocabulary] = await Promise.all([
+        Promise.all(learners.map(getDueMistakes)),
+        Promise.all(learners.map(getDueVocabulary)),
+      ])
+
+      setDueCount(mistakes.flat().length + vocabulary.flat().length)
+    } catch (error) {
+      console.error("[Firestore] Sidebar due count load failed", error)
+      setDueCount(0)
+    }
+  }, [learner])
+
+  React.useEffect(() => {
+    void loadDueCount()
+
+    window.addEventListener(LEARNING_DATA_CHANGED_EVENT, loadDueCount)
+    return () =>
+      window.removeEventListener(LEARNING_DATA_CHANGED_EVENT, loadDueCount)
+  }, [loadDueCount])
 
   return (
     <Sidebar>

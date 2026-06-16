@@ -70,7 +70,7 @@ function StatCard({
 }
 
 export function DashboardScreen() {
-  const { learner, setScreen } = useApp()
+  const { learner, setScreen, openSession } = useApp()
   const [recentSessions, setRecentSessions] = React.useState<Session[]>([])
   const [mistakes, setMistakes] = React.useState<Mistake[]>([])
   const [vocabulary, setVocabulary] = React.useState<Vocabulary[]>([])
@@ -270,7 +270,16 @@ export function DashboardScreen() {
               return (
                 <div
                   key={s.id}
-                  className="flex items-start gap-3 rounded-lg border p-3"
+                  role="button"
+                  tabIndex={0}
+                  className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={() => openSession(s.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault()
+                      openSession(s.id)
+                    }
+                  }}
                 >
                   <Avatar className="size-9 border">
                     <AvatarFallback className="bg-secondary text-xs font-semibold">
